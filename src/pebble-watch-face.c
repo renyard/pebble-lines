@@ -1,10 +1,19 @@
 #include <pebble.h>
 #include <time.h>
 
+enum SyncKey {
+    LINES = 0x0,
+};
+
 static Window *s_main_window;
+
+static AppSync s_sync;
+static uint8_t s_sync_buffer[32];
 
 static TextLayer *s_time_layer;
 static Layer *s_canvas_layer;
+
+static TextLayer *s_status_layer;
 
 static void update_time() {
     // Get a tm structure
@@ -25,6 +34,22 @@ static void update_time() {
 
     // Display this time on the TextLayer
     text_layer_set_text(s_time_layer, buffer);
+}
+
+static void sync_changed_handler(const uint32_t key, const Tuple *new_tuple, const Tuple *old_tuple, void *context) {
+    switch(key) {
+        case LINES:
+            APP_LOG(APP_LOG_LEVEL_DEBUG, "%s", "Update...");
+
+            text_layer_set_text(s_status_layer, new_tuple->value->cstring);
+            /* APP_LOG(APP_LOG_LEVEL_DEBUG, "%s", new_tuple->value->cstring); */
+            break;
+        default:
+            APP_LOG(APP_LOG_LEVEL_DEBUG, "%s", "Other...");
+    }
+}
+
+static void sync_error_handler(DictionaryResult dict_error, AppMessageResult app_message_error, void *context) {
 }
 
 static void canvas_update_proc(Layer *layer, GContext *ctx) {
@@ -84,6 +109,11 @@ static void main_window_load(Window *window) {
 
     s_canvas_layer = layer_create(GRect(0, 0, 244, 48));
     layer_add_child(window_get_root_layer(window), s_canvas_layer);
+
+    s_status_layer = text_layer_create(GRect(0, 105, 144, 50));
+    text_layer_set_background_color(s_status_layer, GColorClear);
+    text_layer_set_text_color(s_status_layer, GColorWhite);
+    layer_add_child(window_get_root_layer(window), text_layer_get_layer(s_status_layer));
 }
 
 static void main_window_unload(Window *window) {
@@ -112,10 +142,22 @@ static void init() {
 
     // Make sure the time is displayed from the start
     update_time();
+
+    // Init AppSync.
+    app_message_open(app_message_inbox_size_maximum(), app_message_outbox_size_maximum());
+
+    Tuplet initial_values[] = {
+        TupletCString(LINES, ""),
+    };
+
+    app_sync_init(&s_sync, s_sync_buffer, sizeof(s_sync_buffer), initial_values, ARRAY_LENGTH(initial_values), sync_changed_handler, sync_error_handler, NULL);
 }
 
 static void deinit() {
-    // Destroy Window
+    // Destroy AppSync.
+    app_sync_deinit(&s_sync);
+
+    // Destroy Window.
     window_destroy(s_main_window);
 }
 
